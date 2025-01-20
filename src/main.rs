@@ -1,3 +1,4 @@
+mod clipboard;
 mod device;
 mod info;
 mod scan;

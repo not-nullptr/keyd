@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    ops::Add,
     rc::Rc,
     sync::{Arc, Mutex},
     thread,
@@ -10,7 +11,7 @@ use hidapi::HidApi;
 use log::{error, info, warn};
 use tokio::{sync::RwLock, task};
 
-const REPORT_LENGTH: usize = 32;
+// const REPORT_LENGTH: usize = 32;
 
 use crate::{device::KeydDeviceInfo, info::InfoMonitor};
 
@@ -113,19 +114,25 @@ impl Scanner {
             let mon = info_monitor.read().await;
             let cpu_usage = mon.cpu_usage.read().await;
             let mem_usage = mon.mem_usage.read().await;
+            let process_count = mon.process_count.read().await.add(0);
 
-            // info!(
-            //     "{}: cpu usage: {}%, mem usage: {}%",
-            //     name, *cpu_usage, *mem_usage
-            // );
+            let mut request_data = vec![];
+            // request_data[0] = 0x00;
+            // request_data[1] = 0x66;
+            // request_data[2] = 0x66;
+            // request_data[3] = *cpu_usage;
+            // request_data[4] = *mem_usage;
+            // request_data[5] = (process_count >> 8) as u8;
+            // request_data[6] = process_count as u8;
 
-            let mut request_data = vec![0x00; REPORT_LENGTH + 1];
-            request_data[0] = 0x00;
-            request_data[1] = 0x66;
-            request_data[2] = 0x66;
-            // TODO: these could be packed into a single byte as they never exceed 100
-            request_data[3] = *cpu_usage;
-            request_data[4] = *mem_usage;
+            request_data.push(0x00);
+            request_data.push(0x66);
+            request_data.push(0x66);
+            request_data.push(*cpu_usage);
+            request_data.push(*mem_usage);
+            request_data.push((process_count >> 8) as u8);
+            request_data.push(process_count as u8);
+            
 
             let send_result = device.lock().unwrap().write(&request_data);
 
@@ -136,7 +143,7 @@ impl Scanner {
 
             info!("{}: sent {} bytes!", name, size);
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
     }
 }
