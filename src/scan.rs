@@ -1,19 +1,22 @@
-use std::{
-    cell::RefCell,
-    ops::Add,
-    rc::Rc,
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
-
+use bincode::{config, Decode, Encode};
 use hidapi::HidApi;
 use log::{error, info, warn};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::{sync::RwLock, task};
 
 // const REPORT_LENGTH: usize = 32;
 
 use crate::{device::KeydDeviceInfo, info::InfoMonitor};
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ToKeyboard {
+    pub time: u32,
+}
 
 pub struct Scanner {
     api: Rc<RefCell<HidApi>>,
@@ -111,28 +114,9 @@ impl Scanner {
                 .unwrap_or_default()
                 .unwrap_or("unknown".to_string())
                 .to_lowercase();
-            let mon = info_monitor.read().await;
-            let cpu_usage = mon.cpu_usage.read().await;
-            let mem_usage = mon.mem_usage.read().await;
-            let process_count = mon.process_count.read().await.add(0);
 
-            let mut request_data = vec![];
-            // request_data[0] = 0x00;
-            // request_data[1] = 0x66;
-            // request_data[2] = 0x66;
-            // request_data[3] = *cpu_usage;
-            // request_data[4] = *mem_usage;
-            // request_data[5] = (process_count >> 8) as u8;
-            // request_data[6] = process_count as u8;
-
-            request_data.push(0x00);
-            request_data.push(0x66);
-            request_data.push(0x66);
-            request_data.push(*cpu_usage);
-            request_data.push(*mem_usage);
-            request_data.push((process_count >> 8) as u8);
-            request_data.push(process_count as u8);
-            
+            let request_data =
+                Self::get_request_data(Arc::clone(&device), Arc::clone(&info_monitor)).await;
 
             let send_result = device.lock().unwrap().write(&request_data);
 
@@ -143,7 +127,28 @@ impl Scanner {
 
             info!("{}: sent {} bytes!", name, size);
 
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
+    }
+
+    async fn get_request_data(
+        _device: Arc<Mutex<hidapi::HidDevice>>,
+        info_monitor: Arc<RwLock<InfoMonitor>>,
+    ) -> Vec<u8> {
+        let mon = info_monitor.read().await;
+        let time = *mon.time.read().await;
+        let level = *mon.level.read().await;
+
+        // get u32 in bytes
+        let time_bytes = time.to_le_bytes();
+        let level_bytes = level.to_le_bytes();
+        let mut request_data = vec![0x00, 0xFF, 0xCC, 0x00, 0xAA];
+        request_data.extend_from_slice(&time_bytes);
+        request_data.extend_from_slice(&level_bytes);
+        // pad to 16 bytes
+        while request_data.len() < 16 {
+            request_data.push(0x00);
+        }
+        request_data
     }
 }
