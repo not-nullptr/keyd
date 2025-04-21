@@ -13,7 +13,7 @@ use windows::Win32::System::Com::{
 };
 use windows_core::Interface;
 
-struct AudioWrapper(IAudioMeterInformation);
+pub struct AudioWrapper(IAudioMeterInformation);
 
 pub struct InfoMonitor {
     pub time: Arc<RwLock<i64>>,
